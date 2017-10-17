@@ -146,44 +146,7 @@ void sgct_core::Viewport::configure(tinyxml2::XMLElement * element)
 		}
 		else if (strcmp("Viewplane", val) == 0 || strcmp("Projectionplane", val) == 0)
         {
-            const char * val;
-            std::size_t i = 0;
-
-            tinyxml2::XMLElement * subElement2 = subElement->FirstChildElement();
-            while (subElement2 != NULL)
-            {
-                val = subElement2->Value();
-
-                if (strcmp("Pos", val) == 0)
-                {
-                    glm::vec3 tmpVec;
-                    float fTmp[3];
-
-                    if (subElement2->QueryFloatAttribute("x", &fTmp[0]) == tinyxml2::XML_NO_ERROR &&
-                        subElement2->QueryFloatAttribute("y", &fTmp[1]) == tinyxml2::XML_NO_ERROR &&
-                        subElement2->QueryFloatAttribute("z", &fTmp[2]) == tinyxml2::XML_NO_ERROR)
-                    {
-                        tmpVec.x = fTmp[0];
-                        tmpVec.y = fTmp[1];
-                        tmpVec.z = fTmp[2];
-
-                        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_DEBUG,
-                            "viewport standard case: Adding plane coordinates %f %f %f for corner %d\n",
-                            tmpVec.x, tmpVec.y, tmpVec.z, i % 3);
-
-                        mProjectionPlane.setCoordinate(i % 3, tmpVec);
-
-                        mUnTransformedViewPlaneCoords[i].x = tmpVec.x;
-                        mUnTransformedViewPlaneCoords[i].y = tmpVec.y;
-                        mUnTransformedViewPlaneCoords[i].z = tmpVec.z;
-
-                        i++;
-                    }
-                }
-
-                //iterate
-                subElement2 = subElement2->NextSiblingElement();
-            }
+            mProjectionPlane.configure(subElement, mUnTransformedViewPlaneCoords);
         }
 
         //iterate
@@ -336,7 +299,7 @@ void sgct_core::Viewport::reset(float x, float y, float xSize, float ySize)
     mOverlayTextureIndex = GL_FALSE;
     mBlendMaskTextureIndex = GL_FALSE;
     mBlackLevelMaskTextureIndex = GL_FALSE;
-    mTracked = true;
+    mTracked = false;
     mEnabled = true;
     mName.assign("NoName");
     mUser = ClusterManager::instance()->getDefaultUserPtr();
