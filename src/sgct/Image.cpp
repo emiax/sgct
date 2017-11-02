@@ -12,13 +12,9 @@ For conditions of distribution and use, see copyright notice in sgct.h
 #ifndef SGCT_DONT_USE_EXTERNAL
 #include "../include/external/png.h"
 #include "../include/external/pngpriv.h"
-#include "../include/external/jpeglib.h"
-#include "../include/external/turbojpeg.h"
 #else
 #include <png.h>
 #include <pngpriv.h>
-#include <jpeglib.h>
-#include <turbojpeg.h>
 #endif
 #include <stdlib.h>
 
@@ -39,32 +35,9 @@ struct PNG_IO_DATA
     unsigned char * data;
 };
 
-//---------------- JPEG helpers -----------------
-struct my_error_mgr
-{
-    struct jpeg_error_mgr pub;    /* "public" fields */
-
-    jmp_buf setjmp_buffer;    /* for return to caller */
-};
-
-typedef struct my_error_mgr * my_error_ptr;
-
 /*
 * Here's the routine that will replace the standard error_exit method:
 */
-
-METHODDEF(void) my_error_exit(j_common_ptr cinfo)
-{
-    /* cinfo->err really points to a my_error_mgr struct, so coerce pointer */
-    my_error_ptr myerr = (my_error_ptr)cinfo->err;
-
-    /* Always display the message. */
-    /* We could postpone this until after returning, if we chose. */
-    (*cinfo->err->output_message) (cinfo);
-
-    /* Return control to the setjmp point */
-    longjmp(myerr->setjmp_buffer, 1);
-}
 
 void readPNGFromBuffer(png_structp png_ptr, png_bytep outData, png_size_t length)
 {
@@ -248,92 +221,7 @@ bool sgct_core::Image::load(std::string filename)
 
 bool sgct_core::Image::loadJPEG(std::string filename)
 {
-    if (filename.empty()) //one char + dot and suffix and is 5 char
-    {
-        return false;
-    }
-
-    mFilename.assign(filename);
-    
-    struct my_error_mgr jerr;
-    struct jpeg_decompress_struct cinfo;
-    FILE * fp = NULL;
-    JSAMPARRAY buffer;
-    std::size_t row_stride;
-
-#if (_MSC_VER >= 1400) //visual studio 2005 or later
-    if (fopen_s(&fp, mFilename.c_str(), "rbS") != 0 || !fp)
-    {
-        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image error: Can't open JPEG texture file '%s'\n", mFilename.c_str());
-        return false;
-    }
-#else
-    fp = fopen(mFilename.c_str(), "rb");
-    if (fp == NULL)
-    {
-        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image error: Can't open JPEG texture file '%s'\n", mFilename.c_str());
-        return false;
-    }
-#endif
-
-    /* Step 1: allocate and initialize JPEG decompression object */
-
-    /* We set up the normal JPEG error routines, then override error_exit. */
-    cinfo.err = jpeg_std_error(&jerr.pub);
-    jerr.pub.error_exit = my_error_exit;
-    /* Establish the setjmp return context for my_error_exit to use. */
-    if (setjmp(jerr.setjmp_buffer))
-    {
-        /* If we get here, the JPEG code has signaled an error.
-        * We need to clean up the JPEG object, close the input file, and return.
-        */
-        jpeg_destroy_decompress(&cinfo);
-        fclose(fp);
-        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image error: Can't open JPEG texture file '%s'\n", mFilename.c_str());
-        return false;
-    }
-    
-    jpeg_create_decompress(&cinfo);
-    jpeg_stdio_src(&cinfo, fp);
-    jpeg_read_header(&cinfo, TRUE);
-    jpeg_start_decompress(&cinfo);
-    row_stride = cinfo.output_width * cinfo.output_components;
-
-    //SGCT uses BGR so convert to that
-    cinfo.out_color_space = mPreferBGRForImport ? JCS_EXT_BGR : JCS_EXT_RGB;
-
-    mBytesPerChannel = 1; //only support 8-bit per color depth for jpeg even if the format supports up to 12-bit
-    mChannels = cinfo.output_components;
-    mSize_x = cinfo.output_width;
-    mSize_y = cinfo.output_height;
-    
-    if (!allocateOrResizeData())
-    {
-        jpeg_destroy_decompress(&cinfo);
-        fclose(fp);
-        return false;
-    }
-
-    /* Make a one-row-high sample array that will go away when done with image */
-    buffer = (*cinfo.mem->alloc_sarray)
-        ((j_common_ptr)&cinfo, JPOOL_IMAGE, static_cast<JDIMENSION>(row_stride), 1);
-
-    std::size_t r = mSize_y-1;
-    while (cinfo.output_scanline < cinfo.output_height)
-    {
-        jpeg_read_scanlines(&cinfo, buffer, 1);
-        //flip vertically
-        memcpy(mData + row_stride*r, buffer[0], row_stride);
-        r--;
-    }
-
-    jpeg_finish_decompress(&cinfo);
-    jpeg_destroy_decompress(&cinfo);
-    fclose(fp);
-
-    sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_INFO, "Image: Loaded %s (%dx%d).\n", mFilename.c_str(), mSize_x, mSize_y);
-
-    return true;
+    return false;
 }
 
 /*!
@@ -341,82 +229,7 @@ bool sgct_core::Image::loadJPEG(std::string filename)
  */
 bool sgct_core::Image::loadJPEG(unsigned char * data, std::size_t len)
 {
-    if(data == NULL || len <= 0)
-    {
-        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image: failed to load JPEG from memory. Invalid input data.");
-        return false;
-    }
-    
-    tjhandle turbo_jpeg_handle = tjInitDecompress();
-    
-    int jpegsubsamp;
-    int pixelformat;
-    int colorspace;
-
-    mBytesPerChannel = 1; //only support 8-bit per color depth for jpeg even if the format supports up to 12-bit
-    
-    if (tjDecompressHeader3(turbo_jpeg_handle, data, static_cast<unsigned long>(len), reinterpret_cast<int*>(&mSize_x), reinterpret_cast<int*>(&mSize_y), &jpegsubsamp, &colorspace) < 0)
-    {
-        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image: failed to load JPEG from memory. Error: %s!\n", tjGetErrorStr());
-        tjDestroy(turbo_jpeg_handle);
-        return false;
-    }
-    
-    switch(jpegsubsamp)
-    {
-        case TJSAMP_444:
-        case TJSAMP_422:
-        case TJSAMP_420:
-        case TJSAMP_440:
-            mChannels = 3;
-            pixelformat = mPreferBGRForImport ? TJPF_BGR : TJPF_RGB;
-            break;
-            
-        case TJSAMP_GRAY:
-            mChannels = 1;
-            pixelformat = TJPF_GRAY;
-            break;
-
-        default:
-            mChannels = -1;
-            break;
-    }
-    
-    if(mChannels < 1)
-    {
-        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image: failed to load JPEG from memory. Unsupported chrominance subsampling!\n");
-        tjDestroy(turbo_jpeg_handle);
-        return false;
-    }
-    
-    if (!allocateOrResizeData())
-    {
-        tjDestroy(turbo_jpeg_handle);
-        return false;
-    }
-
-    if( !mData )
-    {
-        tjDestroy(turbo_jpeg_handle);
-        return false;
-
-    }
-    
-    if (tjDecompress2(turbo_jpeg_handle, data, static_cast<unsigned long>(len), mData, static_cast<int>(mSize_x), 0, static_cast<int>(mSize_y), pixelformat, TJFLAG_FASTDCT | TJFLAG_BOTTOMUP) < 0)
-    {
-        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image: failed to load JPEG from memory. Error: %s!\n", tjGetErrorStr());
-        tjDestroy(turbo_jpeg_handle);
-        
-        delete [] mData;
-        mData = NULL;
-        
-        return false;
-    }
-    
-    sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image: Loaded %dx%d JPEG from memory.\n", mSize_x, mSize_y);
-    
-    tjDestroy(turbo_jpeg_handle);
-    return true;
+    return false;
 }
 
 bool sgct_core::Image::loadPNG(std::string filename)
@@ -1087,94 +900,7 @@ bool sgct_core::Image::savePNG(int compressionLevel)
 
 bool sgct_core::Image::saveJPEG(int quality)
 {
-    if (mData == NULL)
-        return false;
-
-    if (mBytesPerChannel > 1)
-    {
-        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image error: Cannot save %d-bit JPEG.\n", mBytesPerChannel * 8);
-        return false;
-    }
-
-    double t0 = sgct::Engine::getTime();
-
-    FILE *fp = NULL;
-#if (_MSC_VER >= 1400) //visual studio 2005 or later
-    if (fopen_s(&fp, mFilename.c_str(), "wb") != 0 || !fp)
-    {
-        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image error: Can't create JPEG file '%s'\n", mFilename.c_str());
-        return false;
-    }
-#else
-    fp = fopen(mFilename.c_str(), "wb");
-    if (fp == NULL)
-    {
-        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image error: Can't create JPEG file '%s'\n", mFilename.c_str());
-        return false;
-    }
-#endif
-    
-    struct jpeg_compress_struct cinfo;
-    struct jpeg_error_mgr jerr;
-    
-    JSAMPROW row_pointer[1]; /* pointer to JSAMPLE row[s] */
-    std::size_t row_stride;    /* physical row width in image buffer */
-
-    cinfo.err = jpeg_std_error(&jerr);
-    jpeg_create_compress(&cinfo);
-    jpeg_stdio_dest(&cinfo, fp);
-
-    cinfo.image_width = static_cast<JDIMENSION>(mSize_x);
-    cinfo.image_height = static_cast<JDIMENSION>(mSize_y);
-    cinfo.input_components = static_cast<int>(mChannels);
-
-    switch (mChannels)
-    {
-    case 4:
-        cinfo.in_color_space = mPreferBGRForExport ? JCS_EXT_BGRA : JCS_EXT_RGBA;
-        break;
-
-    case 3:
-    default:
-        cinfo.in_color_space = mPreferBGRForExport ? JCS_EXT_BGR : JCS_RGB;
-        break;
-
-    case 2:
-        cinfo.in_color_space = JCS_UNKNOWN;
-        break;
-
-    case 1:
-        cinfo.in_color_space = JCS_GRAYSCALE;
-        break;
-    }
-
-    if (cinfo.in_color_space == JCS_UNKNOWN)
-    {
-        sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR, "Image error: JPEG doesn't support two channel output!\n");
-        return false;
-    }
-
-    jpeg_set_defaults(&cinfo);
-    jpeg_set_quality(&cinfo, quality, TRUE /* limit to baseline-JPEG values */);
-
-    jpeg_start_compress(&cinfo, TRUE);
-
-    row_stride = mSize_x * mChannels;    /* JSAMPLEs per row in image_buffer */
-
-    while (cinfo.next_scanline < cinfo.image_height)
-    {
-        //flip vertically
-        row_pointer[0] = &mData[(mSize_y - cinfo.next_scanline - 1) * row_stride];
-        jpeg_write_scanlines(&cinfo, row_pointer, 1);
-    }
-
-    jpeg_finish_compress(&cinfo);
-    fclose(fp);
-
-    jpeg_destroy_compress(&cinfo);
-
-    sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_DEBUG, "Image: '%s' was saved successfully (%.2f ms)!\n", mFilename.c_str(), (sgct::Engine::getTime() - t0)*1000.0);
-    return true;
+    return false;
 }
 
 bool sgct_core::Image::saveTGA()

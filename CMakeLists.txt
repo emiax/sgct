@@ -445,7 +445,7 @@ target_link_libraries( ${LIB_NAME} debug ${DEBUG_LIBS} optimized ${RELEASE_LIBS}
 
 #to make sure that everything is build when post_build events runs
 
-set(SGCT_DEPS glew glfw png16_static turbojpeg-static tinyxml2static zlibstatic vrpn)
+set(SGCT_DEPS glew glfw png16_static tinyxml2static zlibstatic vrpn)
 #prepend freetype
 if(SGCT_TEXT)
 	set(SGCT_DEPS freetype ${SGCT_DEPS})
@@ -459,7 +459,6 @@ include_directories(BEFORE ${PROJECT_SOURCE_DIR}/src/deps/glfw/include)
 include_directories(BEFORE ${PROJECT_BINARY_DIR}/src/deps/vrpn)
 include_directories(BEFORE ${PROJECT_BINARY_DIR}/src/deps/lpng)
 include_directories(BEFORE ${PROJECT_BINARY_DIR}/src/deps/lpng/zlib)
-include_directories(BEFORE ${PROJECT_BINARY_DIR}/src/deps/libjpeg-turbo)
 
 #merge libs
 if(NOT SGCT_LIGHT_ONLY)
