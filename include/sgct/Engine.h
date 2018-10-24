@@ -14,6 +14,7 @@ For conditions of distribution and use, see copyright notice in sgct.h
 #include "Statistics.h"
 #include "ReadConfig.h"
 #include "ShaderProgram.h"
+#include "CylindricalProjection.h"
 #include "FisheyeProjection.h"
 #include "SphericalMirrorProjection.h"
 #include "SpoutOutputProjection.h"
@@ -37,6 +38,7 @@ The figure below illustrates when different callbacks (gray and blue boxes) are 
 */
 class Engine
 {
+    friend class sgct_core::CylindricalProjection; //needs to access draw callbacks
 	friend class sgct_core::FisheyeProjection; //needs to access draw callbacks
 	friend class sgct_core::SphericalMirrorProjection; //needs to access draw callbacks
 	friend class sgct_core::SpoutOutputProjection; //needs to access draw callbacks

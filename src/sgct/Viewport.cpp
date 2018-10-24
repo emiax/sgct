@@ -11,6 +11,7 @@ For conditions of distribution and use, see copyright notice in sgct.h
 #include <sgct/ClusterManager.h>
 #include <sgct/MessageHandler.h>
 #include <sgct/ReadConfig.h>
+#include <sgct/CylindricalProjection.h>
 #include <sgct/FisheyeProjection.h>
 #include <sgct/SphericalMirrorProjection.h>
 #include <sgct/SpoutOutputProjection.h>
@@ -131,6 +132,10 @@ void sgct_core::Viewport::configure(tinyxml2::XMLElement * element)
         {
             parsePlanarProjection(subElement);
         }//end if planar projection
+        else if (strcmp("CylindricalProjection", val) == 0)
+        {
+            parseCylindricalProjection(subElement);
+        }
         else if (strcmp("FisheyeProjection", val) == 0)
         {
             parseFisheyeProjection(subElement);
@@ -387,6 +392,63 @@ void sgct_core::Viewport::parsePlanarProjection(tinyxml2::XMLElement * element)
         setViewPlaneCoordsUsingFOVs(up, -down, -left, right, rotQuat, distance);
         mProjectionPlane.offset(offset);
     }
+}
+
+void sgct_core::Viewport::parseCylindricalProjection(tinyxml2::XMLElement * element)
+{
+    CylindricalProjection * cylProj = new CylindricalProjection();
+    for (std::size_t i = 0; i < 6; i++)
+        cylProj->getSubViewportPtr(i)->setUser(mUser);
+
+    float sectorAngle;
+    if (element->QueryFloatAttribute("sectorAngle", &sectorAngle) == tinyxml2::XML_NO_ERROR)
+        cylProj->setSectorAngle(sectorAngle);
+
+    float height;
+    if (element->QueryFloatAttribute("height", &height) == tinyxml2::XML_NO_ERROR)
+        cylProj->setHeight(height);
+
+    int radius;
+    if (element->QueryIntAttribute("radius", &radius) == tinyxml2::XML_NO_ERROR)
+        cylProj->setRadius(radius);
+
+    int cylRes;
+    if (element->QueryIntAttribute("cylRes", &cylRes) == tinyxml2::XML_NO_ERROR)
+        cylProj->setCylindricalResolution(cylRes);
+
+    int heightRes;
+    if (element->QueryIntAttribute("heightRes", &heightRes) == tinyxml2::XML_NO_ERROR)
+        cylProj->setHeightResolution(heightRes);
+    
+    int nFrustums;
+    if (element->QueryIntAttribute("frustums", &nFrustums) == tinyxml2::XML_NO_ERROR)
+        cylProj->setNFrustums(nFrustums);
+
+    tinyxml2::XMLElement * subElement = element->FirstChildElement();
+    const char * val;
+
+    while (subElement != NULL)
+    {
+        val = subElement->Value();
+        if (strcmp("Offset", val) == 0)
+        {
+            glm::vec3 offset = glm::vec3(0.0f);
+            float ftmp;
+
+            if (subElement->QueryFloatAttribute("x", &ftmp) == tinyxml2::XML_NO_ERROR)
+                offset.x = ftmp;
+            if (subElement->QueryFloatAttribute("y", &ftmp) == tinyxml2::XML_NO_ERROR)
+                offset.y = ftmp;
+            if (subElement->QueryFloatAttribute("z", &ftmp) == tinyxml2::XML_NO_ERROR)
+                offset.z = ftmp;
+
+            cylProj->setBaseOffset(offset);
+        }
+        subElement = subElement->NextSiblingElement();
+    }
+
+    cylProj->setUseDepthTransformation(true);
+    mNonLinearProjection = cylProj;
 }
 
 void sgct_core::Viewport::parseFisheyeProjection(tinyxml2::XMLElement * element)

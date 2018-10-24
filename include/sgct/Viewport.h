@@ -89,6 +89,7 @@ public:
 private:
     void reset(float x, float y, float xSize, float ySize);
     void parsePlanarProjection(tinyxml2::XMLElement * element);
+    void parseCylindricalProjection(tinyxml2::XMLElement * element);
     void parseFisheyeProjection(tinyxml2::XMLElement * element);
     void parseSpoutOutputProjection(tinyxml2::XMLElement * element);
     void parseSphericalMirrorProjection(tinyxml2::XMLElement * element);
