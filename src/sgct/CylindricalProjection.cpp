@@ -15,6 +15,42 @@ For conditions of distribution and use, see copyright notice in sgct.h
 #include <sstream>
 #include <algorithm>
 
+#include <glm/gtx/vector_angle.hpp>
+
+namespace {
+
+void setupProjectionPlane(
+    sgct_core::SGCTProjectionPlane* p,
+    float leftFovAngle,
+    float rightFovAngle,
+    float top,
+    float bottom)
+{
+	glm::vec4 lowerLeft = glm::vec4(
+        -glm::sin(leftFovAngle),
+        bottom,
+        -glm::cos(leftFovAngle),
+        1.f);
+
+    glm::vec4 upperLeft = glm::vec4(
+        -glm::sin(leftFovAngle),
+        top,
+        -glm::cos(leftFovAngle),
+        1.f);
+
+    glm::vec4 upperRight = glm::vec4(
+        -glm::sin(rightFovAngle),
+        top,
+        -glm::cos(rightFovAngle),
+        1.f);
+
+    p->setCoordinate(sgct_core::SGCTProjectionPlane::LowerLeft, glm::vec3(lowerLeft));
+    p->setCoordinate(sgct_core::SGCTProjectionPlane::UpperLeft, glm::vec3(upperLeft));
+    p->setCoordinate(sgct_core::SGCTProjectionPlane::UpperRight, glm::vec3(upperRight));
+};
+
+}
+
 // For now, this class does only support vertical cylindrical mappings.
 // TODO: Allow cylinder to be oriented horizontally.
 
@@ -73,6 +109,11 @@ void sgct_core::CylindricalProjection::setBaseOffset(const glm::vec3 & baseOffse
     mBaseOffset = baseOffset;
 }
 
+glm::vec3 sgct_core::CylindricalProjection::totalOffset() const
+{
+    return mBaseOffset + mOffset;
+}
+
 void sgct_core::CylindricalProjection::setRadius(float radius)
 {
     mRadius = radius;
@@ -108,51 +149,6 @@ void sgct_core::CylindricalProjection::renderCubemap(std::size_t * subViewPortIn
     // ..
 }
 
-void sgct_core::CylindricalProjection::initOneViewport()
-{
-    const int xRes = mCylindricalResolution;
-    const int yRes = mHeightResolution;
-
-    const float angle = 0;
-}
-
-void sgct_core::CylindricalProjection::initTwoViewports()
-{
-    const int xRes = mCylindricalResolution / 2;
-    const int yRes = mHeightResolution;
-
-    const float cylPartFov = mSectorAngle / 2.f;
-
-    const float angleLeft = cylPartFov / 2.f;
-    const float angleRight = -cylPartFov / 2.f;
-}
-
-void sgct_core::CylindricalProjection::initThreeViewports()
-{
-    const int xRes = mCylindricalResolution / 3;
-    const int yRes = mHeightResolution;
-
-    const float cylPartFov = mSectorAngle / 3.f;
-
-    const float angleFront = 0;
-    const float angleLeft = cylPartFov;
-    const float angleRight = -cylPartFov;
-}
-
-void sgct_core::CylindricalProjection::initFourViewports()
-{
-    const int xRes = mCylindricalResolution / 4;
-    const int yRes = mHeightResolution;
-
-    const float cylPartFov = mSectorAngle / 4.f;
-
-    const float angleBackLeft = cylPartFov / 2.f * 3.f * 2.f;
-    const float angleFrontLeft = cylPartFov / 2.f * 3.f;
-    const float angleFrontRight = -cylPartFov / 2.f * 3.f;
-    const float angleBackRight = -cylPartFov / 2.f * 3.f * 2.f;
-}
-
-
 void sgct_core::CylindricalProjection::initTextures()
 {
 
@@ -165,37 +161,48 @@ void sgct_core::CylindricalProjection::initVBO()
 
 void sgct_core::CylindricalProjection::initViewports()
 {
+	// In this limited context we consider the plane where
+    // x points into the screen and y points to the left
 
-    float screenXMin = glm::cos(mSectorAngle / 2);
-    float screenYMin = -glm::sin(mSectorAngle / 2);
-    float screenYMax = glm::sin(mSectorAngle / 2);
-    float screenZMin = -mHeight / 2;
-    float screenZMax = mHeight / 2;
+    const float screenXMin = glm::cos(mSectorAngle / 2);
+    const float screenYMin = -glm::sin(mSectorAngle / 2);
+    const float screenYMax = glm::sin(mSectorAngle / 2);
+	
+    const glm::vec2 leftEdge = glm::vec2(screenXMin, screenYMax);
+    const glm::vec2 rightEdge = glm::vec2(screenXMin, screenYMin);
 
-    glm::vec2 userToLeft = glm::vec2(screenXMin - mBaseOffset.x, screenYMax - mBaseOffset.y);
-    glm::vec2 userToRight = glm::vec2(screenXMin - mBaseOffset.x, screenYMin - mBaseOffset.y);
-    glm::vec2 userToRightBaseVertex = rightBaseVertex - mBaseOffset;
+    const glm::vec2 user = glm::vec2(-mBaseOffset.z, -mBaseOffset.x);
+    const glm::vec2 userToLeftEdge = leftEdge - user;
+    const glm::vec2 userToRightEdge = rightEdge - user;
 
+    mFovAngleLeft = glm::orientedAngle(glm::vec2(1.f, 0.f), userToLeftEdge);
+    mFovAngleRight = glm::orientedAngle(glm::vec2(1.f, 0.f), userToRightEdge);
+
+    const float totalCylFov = mFovAngleLeft - mFovAngleRight;
 
     if (mNFrustums == 0) {
-        mNFrustums = glm::clamp(static_cast<int>(mSectorAngle / glm::half_pi<float>()), 1, 3) + 1;
+        mNFrustums = glm::clamp(static_cast<int>(totalCylFov / glm::half_pi<float>()), 1, 3) + 1;
         sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_INFO,
             "CylindricalProjection: Automatically setting number of frustums to %d", mNFrustums);
-    } else if (mNFrustums < static_cast<int>(mSectorAngle / 180.f)) {
+    } else if (mNFrustums < static_cast<int>(totalCylFov / 180.f)) {
         sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR,
             "CylindricalProjection: Need at least %d frustums for a cylindrical fov of %f",
             static_cast<int>(mSectorAngle / 180) + 1,
-            mSectorAngle
+            totalCylFov
         );
     }
-    
-    switch (mNFrustums) {
-    case 1: initOneViewport(); break;
-    case 2: initTwoViewports(); break;
-    case 3: initThreeViewports(); break;
-    case 4: initFourViewports(); break;
-    }
 
+    const float top = mHeight / 2.f - mOffset.y;
+    const float bottom = -mHeight / 2.f - mOffset.y;
+    const float frustumXFov = totalCylFov / static_cast<float>(mNFrustums);
+
+    for (int i = 0; i < mNFrustums; ++i)
+    {
+        const float leftAngle = (mFovAngleLeft - frustumXFov * i);
+        const float rightAngle = (mFovAngleLeft - frustumXFov * (i + 1));
+        sgct_core::SGCTProjectionPlane* p0 = mSubViewports[0].getProjectionPlane();
+        setupProjectionPlane(p0, leftAngle, rightAngle, top, bottom);
+    }
 }
 
 

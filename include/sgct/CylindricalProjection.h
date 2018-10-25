@@ -43,11 +43,6 @@ namespace sgct_core
         void renderCubemap(std::size_t * subViewPortIndex) override;
         
     private:
-        void initOneViewport();
-        void initTwoViewports();
-        void initThreeViewports();
-        void initFourViewports();
-
         void initTextures() override;
         void initVBO() override;
         void initViewports() override;
@@ -58,6 +53,8 @@ namespace sgct_core
         float mHeight = 1.f;
         int mCylindricalResolution = 1024;
         int mHeightResolution = 512;
+        float mFovAngleLeft = 0.f;
+        float mFovAngleRight = 0.f;
 
         glm::vec3 mOffset;
         glm::vec3 mBaseOffset;
@@ -68,3 +65,4 @@ namespace sgct_core
 
 
 #endif
+
