@@ -161,8 +161,8 @@ void sgct_core::CylindricalProjection::initVBO()
 
 void sgct_core::CylindricalProjection::initViewports()
 {
-	// In this limited context we consider the plane where
-    // x points into the screen and y points to the left
+    // In this limited context we refer to the plane where
+    // x points into the screen and y points to the left.
 
     const float screenXMin = glm::cos(mSectorAngle / 2);
     const float screenYMin = -glm::sin(mSectorAngle / 2);
@@ -171,30 +171,28 @@ void sgct_core::CylindricalProjection::initViewports()
     const glm::vec2 leftEdge = glm::vec2(screenXMin, screenYMax);
     const glm::vec2 rightEdge = glm::vec2(screenXMin, screenYMin);
 
-    const glm::vec2 user = glm::vec2(-mBaseOffset.z, -mBaseOffset.x);
-    const glm::vec2 userToLeftEdge = leftEdge - user;
-    const glm::vec2 userToRightEdge = rightEdge - user;
+    mFovAngleLeft = glm::orientedAngle(glm::vec2(1.f, 0.f), leftEdge);
+    mFovAngleRight = glm::orientedAngle(glm::vec2(1.f, 0.f), rightEdge);
 
-    mFovAngleLeft = glm::orientedAngle(glm::vec2(1.f, 0.f), userToLeftEdge);
-    mFovAngleRight = glm::orientedAngle(glm::vec2(1.f, 0.f), userToRightEdge);
-
-    const float totalCylFov = mFovAngleLeft - mFovAngleRight;
 
     if (mNFrustums == 0) {
-        mNFrustums = glm::clamp(static_cast<int>(totalCylFov / glm::half_pi<float>()), 1, 3) + 1;
+        mNFrustums = glm::clamp(static_cast<int>(mSectorAngle / glm::half_pi<float>()), 1, 3) + 1;
         sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_INFO,
             "CylindricalProjection: Automatically setting number of frustums to %d", mNFrustums);
-    } else if (mNFrustums < static_cast<int>(totalCylFov / 180.f)) {
+    } else if (mNFrustums < static_cast<int>(mSectorAngle / 180.f)) {
         sgct::MessageHandler::instance()->print(sgct::MessageHandler::NOTIFY_ERROR,
             "CylindricalProjection: Need at least %d frustums for a cylindrical fov of %f",
             static_cast<int>(mSectorAngle / 180) + 1,
-            totalCylFov
+            mSectorAngle
         );
     }
 
+	// Now, we refer to OpenGL's 3D coordinate system where
+	// x points to the left, y points up, and z points out of the screen.
+
     const float top = mHeight / 2.f - mOffset.y;
     const float bottom = -mHeight / 2.f - mOffset.y;
-    const float frustumXFov = totalCylFov / static_cast<float>(mNFrustums);
+    const float frustumXFov = mSectorAngle / static_cast<float>(mNFrustums);
 
     for (int i = 0; i < mNFrustums; ++i)
     {
@@ -208,5 +206,41 @@ void sgct_core::CylindricalProjection::initViewports()
 
 void sgct_core::CylindricalProjection::initShaders()
 {
+    //reload shader program if it exists
+    if (mShader.isLinked())
+        mShader.deleteProgram();
+
+	// TODO: Load shaders
+    std::string vertexShader = "";
+    std::string fragmentShader = "";
+
+    if (!mShader.addShaderSrc(vertexShader,
+        GL_VERTEX_SHADER,
+        sgct::ShaderProgram::SHADER_SRC_STRING))
+    {
+        sgct::MessageHandler::instance()->print(
+            sgct::MessageHandler::NOTIFY_ERROR,
+            "Failed to load fisheye vertex shader:\n%s\n",
+            vertexShader.c_str());
+    }
+
+    if (!mShader.addShaderSrc(
+        fragmentShader,
+        GL_FRAGMENT_SHADER,
+        sgct::ShaderProgram::SHADER_SRC_STRING))
+    {
+        sgct::MessageHandler::instance()->print(
+            sgct::MessageHandler::NOTIFY_ERROR,
+            "Failed to load fisheye fragment shader\n%s\n",
+            fragmentShader.c_str());
+    }
+
+    mShader.setName("CylindricalShader");
+    mShader.createAndLinkProgram();
+    mShader.bind();
+	
+    // TODO: Set uniforms
+
+    sgct::ShaderProgram::unbind();
 
 }
